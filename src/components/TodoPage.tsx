@@ -1,69 +1,89 @@
 import { Check, Delete } from '@mui/icons-material';
-import { Box, Button, Container, IconButton, TextField, Typography } from '@mui/material';
+import {
+  Box,
+  Button,
+  Container,
+  IconButton,
+  MenuItem,
+  Select,
+  TextField,
+  Typography,
+} from '@mui/material';
 import { useEffect, useState } from 'react';
 import useFetch from '../hooks/useFetch';
 import { Task } from '../index';
 
+interface EditedTask {
+  name: string;
+  priority: string;
+}
+
 const TodoPage = () => {
   const api = useFetch();
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [editedTasks, setEditedTasks] = useState<{ [key: number]: string }>({});
+  // Pour stocker les valeurs éditées pour chaque tâche (nom et priorité)
+  const [editedTasks, setEditedTasks] = useState<{ [key: number]: EditedTask }>({});
+  // Pour ajouter une nouvelle tâche (nom et priorité)
+  const [newTask, setNewTask] = useState<{ name: string; priority: string }>({
+    name: '',
+    priority: 'MEDIUM',
+  });
 
-  const handleFetchTasks = async () => {
+  const fetchTasks = async () => {
     try {
-      const response = await api.get('/tasks');
-      // Vérification du format de la réponse :
-      // Si la réponse est un tableau, on l'utilise directement
-      // Sinon, si c'est un objet avec une propriété "tasks", on l'extrait
-      const tasksArray = Array.isArray(response)
-        ? response
-        : response.tasks
-          ? response.tasks
-          : [];
-      setTasks(tasksArray);
-    } catch (error) {
-      console.error('Erreur lors de la récupération des tâches :', error);
+      const res = await api.get('/tasks');
+      const ts = Array.isArray(res) ? res : res.tasks ? res.tasks : [];
+      setTasks(ts);
+      const init: { [key: number]: EditedTask } = {};
+      ts.forEach((t: Task) => {
+        init[t.id] = { name: t.name, priority: t.priority };
+      });
+      setEditedTasks(init);
+    } catch (err) {
+      console.error(err);
       setTasks([]);
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const deleteTask = async (id: number) => {
     try {
       await api.delete(`/tasks/${id}`);
-      handleFetchTasks();
-    } catch (error) {
-      console.error('Erreur lors de la suppression de la tâche :', error);
+      fetchTasks();
+    } catch (err) {
+      console.error(err);
     }
   };
 
-  const handleSave = async () => {
-    const taskName = prompt("Veuillez saisir le nom de la tâche :");
-    if (taskName) {
-      try {
-        await api.post('/tasks', { name: taskName });
-        handleFetchTasks();
-      } catch (error) {
-        console.error("Erreur lors de l'ajout de la tâche :", error);
-      }
-    }
-  };
-
-  const handleUpdate = async (id: number, newName: string) => {
+  const addTask = async () => {
+    if (!newTask.name.trim()) return;
     try {
-      await api.patch(`/tasks/${id}`, { name: newName });
+      await api.post('/tasks', newTask);
+      setNewTask({ name: '', priority: 'MEDIUM' });
+      fetchTasks();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const updateTask = async (id: number) => {
+    const e = editedTasks[id];
+    const orig = tasks.find(t => t.id === id);
+    if (!orig || (e.name === orig.name && e.priority === orig.priority)) return;
+    try {
+      await api.patch(`/tasks/${id}`, { name: e.name, priority: e.priority });
       setEditedTasks(prev => {
-        const updated = { ...prev };
-        delete updated[id];
-        return updated;
+        const upd = { ...prev };
+        delete upd[id];
+        return upd;
       });
-      handleFetchTasks();
-    } catch (error) {
-      console.error('Erreur lors de la mise à jour de la tâche :', error);
+      fetchTasks();
+    } catch (err) {
+      console.error(err);
     }
   };
 
   useEffect(() => {
-    handleFetchTasks();
+    fetchTasks();
   }, []);
 
   return (
@@ -71,46 +91,69 @@ const TodoPage = () => {
       <Box display="flex" justifyContent="center" mt={5}>
         <Typography variant="h2">HDM Todo List</Typography>
       </Box>
-
-      <Box display="flex" flexDirection="column" justifyContent="center" mt={5}>
-        {Array.isArray(tasks) && tasks.map((task) => {
-          const currentValue = editedTasks[task.id] !== undefined ? editedTasks[task.id] : task.name;
-          const isChanged = editedTasks[task.id] !== undefined && editedTasks[task.id] !== task.name;
+      <Box display="flex" flexDirection="column" alignItems="center" mt={5}>
+        {tasks.map(task => {
+          const cur = editedTasks[task.id] || { name: task.name, priority: task.priority };
+          const changed = cur.name !== task.name || cur.priority !== task.priority;
           return (
-            <Box
-              key={task.id}
-              display="flex"
-              justifyContent="center"
-              alignItems="center"
-              mt={2}
-              gap={1}
-              width="100%"
-            >
+            <Box key={task.id} display="flex" alignItems="center" mt={2} gap={1}>
               <TextField
+                id={`task-name-${task.id}`}
+                name="taskName"
                 size="small"
-                value={currentValue}
-                fullWidth
+                value={cur.name}
+                onChange={e =>
+                  setEditedTasks({ ...editedTasks, [task.id]: { ...cur, name: e.target.value } })
+                }
                 sx={{ maxWidth: 350 }}
-                onChange={(e) => setEditedTasks({ ...editedTasks, [task.id]: e.target.value })}
               />
+              <Select
+                id={`task-priority-${task.id}`}
+                name="taskPriority"
+                value={cur.priority}
+                onChange={e =>
+                  setEditedTasks({ ...editedTasks, [task.id]: { ...cur, priority: e.target.value as string } })
+                }
+                size="small"
+                sx={{ maxWidth: 150 }}
+              >
+                <MenuItem value="HIGH">Haute</MenuItem>
+                <MenuItem value="MEDIUM">Moyenne</MenuItem>
+                <MenuItem value="LOW">Basse</MenuItem>
+              </Select>
               <Box>
-                <IconButton
-                  color="success"
-                  disabled={!isChanged}
-                  onClick={() => handleUpdate(task.id, currentValue)}
-                >
+                <IconButton color="success" disabled={!changed} onClick={() => updateTask(task.id)}>
                   <Check />
                 </IconButton>
-                <IconButton color="error" onClick={() => handleDelete(task.id)}>
+                <IconButton color="error" onClick={() => deleteTask(task.id)}>
                   <Delete />
                 </IconButton>
               </Box>
             </Box>
           );
         })}
-
-        <Box display="flex" justifyContent="center" alignItems="center" mt={2}>
-          <Button variant="outlined" onClick={handleSave}>
+        <Box display="flex" alignItems="center" mt={2} gap={1}>
+          <TextField
+            id="new-task-name"
+            name="newTaskName"
+            size="small"
+            value={newTask.name}
+            onChange={e => setNewTask({ ...newTask, name: e.target.value })}
+            placeholder="Nom de la tâche"
+          />
+          <Select
+            id="new-task-priority"
+            name="newTaskPriority"
+            value={newTask.priority}
+            onChange={e => setNewTask({ ...newTask, priority: e.target.value as string })}
+            size="small"
+            sx={{ maxWidth: 150 }}
+          >
+            <MenuItem value="HIGH">Haute</MenuItem>
+            <MenuItem value="MEDIUM">Moyenne</MenuItem>
+            <MenuItem value="LOW">Basse</MenuItem>
+          </Select>
+          <Button variant="outlined" onClick={addTask}>
             Ajouter une tâche
           </Button>
         </Box>
